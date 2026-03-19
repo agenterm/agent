@@ -4,7 +4,13 @@ A security gate for AI coding agents. Intercepts dangerous operations from Claud
 
 ## Install
 
-Download the latest binary from [Releases](https://github.com/agenterm/cli/releases), or build from source:
+One-line install (auto-detects OS and architecture):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agenterm/cli/main/install.sh | sh
+```
+
+Or download manually from [Releases](https://github.com/agenterm/cli/releases), or build from source:
 
 ```bash
 go build -o agenterm ./cmd/agenterm
