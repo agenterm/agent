@@ -31,7 +31,7 @@ func NewClient(cfg *config.Config) *Client {
 // Ping validates that the push key is accepted by the relay server.
 // It sends a test POST /proposals request and treats HTTP 401 as invalid.
 func (c *Client) Ping() error {
-	resp, err := c.doRequest("POST", "/proposals", strings.NewReader(`{"type":"status","title":"__validate__"}`))
+	resp, err := c.doRequest("POST", "/proposals", strings.NewReader(`{"type":"status","title":"__validate__","body":"__validate__"}`))
 	if err != nil {
 		return err
 	}

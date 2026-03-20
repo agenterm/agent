@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 )
 
@@ -14,15 +15,17 @@ var ErrGateDisabled = errors.New("gate disabled: takeover not enabled")
 
 // Proposal represents a proposal in the relay system.
 type Proposal struct {
-	ID          string     `json:"id"`
-	Type        string     `json:"type"`
-	Title       string     `json:"title"`
-	Body        string     `json:"body,omitempty"`
-	Memory      *Memory    `json:"memory,omitempty"`
-	Status      string     `json:"status"`
-	CreatedAt   time.Time  `json:"created_at"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	RespondedAt *time.Time `json:"responded_at,omitempty"`
+	ID          string  `json:"id"`
+	Type        string  `json:"type"`
+	Title       string  `json:"title"`
+	Body        string  `json:"body,omitempty"`
+	Memory      *Memory `json:"memory,omitempty"`
+	UserID      string  `json:"user_id,omitempty"`
+	Blocking    bool    `json:"blocking,omitempty"`
+	Status      string  `json:"status"`
+	CreatedAt   int64   `json:"created_at"`
+	ExpiresAt   int64   `json:"expires_at"`
+	RespondedAt *int64  `json:"responded_at,omitempty"`
 }
 
 // Memory is optional memory attached to a proposal.
@@ -34,7 +37,7 @@ type Memory struct {
 type createRequest struct {
 	Type      string  `json:"type"`
 	Title     string  `json:"title"`
-	Body      string  `json:"body,omitempty"`
+	Body      string  `json:"body"`
 	Memory    *Memory `json:"memory,omitempty"`
 	Blocking  *bool   `json:"blocking,omitempty"`
 	ExpiresIn *int    `json:"expires_in,omitempty"`
@@ -102,12 +105,17 @@ func (c *Client) CreateProposal(pType, title, body string, opts ...CreateOption)
 }
 
 // GetProposal retrieves a proposal by ID.
+// Uses timeout=0 to avoid long-polling; returns a pending stub if the proposal is still pending (204).
 func (c *Client) GetProposal(id string) (*Proposal, error) {
-	resp, err := c.doRequest("GET", "/proposals/"+id, nil)
+	resp, err := c.doRequest("GET", fmt.Sprintf("/proposals/%s?timeout=0", id), nil)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return &Proposal{ID: id, Status: "pending"}, nil
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
