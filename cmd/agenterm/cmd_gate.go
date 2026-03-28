@@ -71,8 +71,13 @@ func runGateHook(hookInput *agent.HookInput, timeout int) int {
 	// Decision event: forward to APN and wait for response.
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gate: config not found, blocking %s\n", hookInput.HookEventName)
-		return 2
+		fmt.Fprintf(os.Stderr, "gate: config not found, falling back to local prompt\n")
+		out := agent.OutputterForEvent(hookInput.HookEventName)
+		fallbackPrompt := fmt.Sprintf("[%s] %s", hookInput.HookEventName, hookInput.ToolName)
+		if askLocallyInTerminal(fallbackPrompt) {
+			return outputDecision(out.Allow("approved locally via AgenTerm (no config)"))
+		}
+		return outputDecision(out.Deny("denied locally via AgenTerm (no config)"))
 	}
 
 	client := relay.NewClient(cfg)
@@ -104,7 +109,11 @@ func runGateHook(hookInput *agent.HookInput, timeout int) int {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gate: error: %v\n", err)
-		return 2
+		fmt.Fprintf(os.Stderr, "gate: falling back to local prompt\n")
+		if askLocallyInTerminal(fallbackPrompt) {
+			return outputDecision(out.Allow("approved locally via AgenTerm (relay error)"))
+		}
+		return outputDecision(out.Deny("denied locally via AgenTerm (relay error)"))
 	}
 
 	if hookResp.Mode == "observability" {
@@ -115,7 +124,11 @@ func runGateHook(hookInput *agent.HookInput, timeout int) int {
 	proposal, err := client.WaitForProposal(hookResp.Proposal.ID, time.Duration(timeout)*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gate: error waiting: %v\n", err)
-		return 2
+		fmt.Fprintf(os.Stderr, "gate: falling back to local prompt\n")
+		if askLocallyInTerminal(fallbackPrompt) {
+			return outputDecision(out.Allow("approved locally via AgenTerm (relay error)"))
+		}
+		return outputDecision(out.Deny("denied locally via AgenTerm (relay error)"))
 	}
 
 	switch gate.NormalizeStatus(proposal.Status) {
@@ -155,8 +168,11 @@ func runGateLegacy(input string, timeout int) int {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
-		return 2
+		fmt.Fprintf(os.Stderr, "gate: config not found, falling back to local prompt\n")
+		if askLocallyInTerminal(input) {
+			return 0
+		}
+		return 1
 	}
 
 	client := relay.NewClient(cfg)
@@ -169,13 +185,25 @@ func runGateLegacy(input string, timeout int) int {
 			return 1
 		}
 	}
+	if errors.Is(err, relay.ErrPushKeyExpired) {
+		fmt.Fprintf(os.Stderr, "gate: push key expired or invalid — copy a fresh key from the AgenTerm app\n")
+		fmt.Fprintf(os.Stderr, "gate: falling back to local prompt\n")
+		if askLocallyInTerminal(input) {
+			return 0
+		}
+		return 1
+	}
 	if errors.Is(err, relay.ErrRateLimited) {
 		fmt.Fprintf(os.Stderr, "rate limited by relay server, denying for safety\n")
 		return 1
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		return 2
+		fmt.Fprintf(os.Stderr, "gate: error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "gate: falling back to local prompt\n")
+		if askLocallyInTerminal(input) {
+			return 0
+		}
+		return 1
 	}
 
 	enc := json.NewEncoder(os.Stdout)

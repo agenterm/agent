@@ -129,6 +129,9 @@ func (c *Client) GetProposal(id string) (*Proposal, error) {
 		return &Proposal{ID: id, Status: "pending"}, nil
 	}
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, ErrPushKeyExpired
+	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return nil, ErrRateLimited
 	}
@@ -172,6 +175,11 @@ func (c *Client) WaitForProposal(id string, timeout time.Duration) (*Proposal, e
 		if resp.StatusCode == 204 {
 			resp.Body.Close()
 			continue
+		}
+
+		if resp.StatusCode == http.StatusUnauthorized {
+			resp.Body.Close()
+			return nil, ErrPushKeyExpired
 		}
 
 		var proposal Proposal
